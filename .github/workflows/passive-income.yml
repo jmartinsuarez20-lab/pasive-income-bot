@@ -1,0 +1,165 @@
+# .github/workflows/passive-income.yml
+# Sistema de ingresos pasivos 100% automático
+# Se ejecuta cada 6 horas y crea productos automáticamente
+
+name: 🤖 Passive Income Bot
+on:
+  # Se ejecuta cada 6 horas automáticamente
+  schedule:
+    - cron: '0 */6 * * *'  # A las 00:00, 06:00, 12:00, 18:00 UTC
+  
+  # También permite ejecutar manualmente
+  workflow_dispatch:
+    inputs:
+      test_mode:
+        description: 'Modo prueba (true/false)'
+        required: false
+        default: 'false'
+
+jobs:
+  content-arbitrage:
+    name: 📊 Crear Productos Automáticos
+    runs-on: ubuntu-latest
+    timeout-minutes: 15  # Límite de seguridad
+    
+    steps:
+      # 1. Descargar el código del repositorio
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      # 2. Configurar Python
+      - name: 🐍 Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      # 3. Instalar dependencias
+      - name: 📦 Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests beautifulsoup4 openai==0.28.1 reportlab python-dotenv
+          pip install --no-deps PyPDF2
+
+      # 4. Verificar APIs disponibles
+      - name: 🔍 Check API Keys
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GUMROAD_ACCESS_TOKEN: ${{ secrets.GUMROAD_ACCESS_TOKEN }}
+        run: |
+          if [ -z "$OPENAI_API_KEY" ]; then
+            echo "❌ OPENAI_API_KEY no configurado"
+            exit 1
+          fi
+          if [ -z "$GUMROAD_ACCESS_TOKEN" ]; then
+            echo "❌ GUMROAD_ACCESS_TOKEN no configurado" 
+            exit 1
+          fi
+          echo "✅ APIs configuradas correctamente"
+
+      # 5. Ejecutar el bot principal
+      - name: 🚀 Run Content Arbitrage Bot
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GUMROAD_ACCESS_TOKEN: ${{ secrets.GUMROAD_ACCESS_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TEST_MODE: ${{ github.event.inputs.test_mode }}
+        run: |
+          echo "🤖 Iniciando bot de ingresos pasivos..."
+          python main.py
+          echo "✅ Bot ejecutado correctamente"
+
+      # 6. Guardar logs y resultados
+      - name: 💾 Save Results
+        run: |
+          # Crear directorio de logs si no existe
+          mkdir -p logs
+          
+          # Guardar log de esta ejecución
+          echo "$(date): Bot ejecutado correctamente" >> logs/execution.log
+          
+          # Mostrar últimas 10 ejecuciones
+          echo "📊 Últimas ejecuciones:"
+          tail -10 logs/execution.log || echo "Primer ejecución"
+
+      # 7. Commit automático de resultados (opcional)
+      - name: 📝 Commit Results
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "Passive Income Bot"
+          git add -A
+          
+          # Solo commit si hay cambios
+          if [ -n "$(git status --porcelain)" ]; then
+            git commit -m "🤖 Auto: Bot execution $(date '+%Y-%m-%d %H:%M')"
+            git push
+            echo "✅ Resultados guardados en GitHub"
+          else
+            echo "📝 Sin cambios para guardar"
+          fi
+
+      # 8. Notificación de éxito (opcional)
+      - name: 🎉 Success Notification
+        if: success()
+        run: |
+          echo "🎉 ¡Bot ejecutado exitosamente!"
+          echo "📅 Fecha: $(date)"
+          echo "🔄 Próxima ejecución: en 6 horas"
+          echo "📊 Revisa Gumroad para nuevos productos"
+
+      # 9. Manejo de errores
+      - name: ❌ Error Notification
+        if: failure()
+        run: |
+          echo "❌ Error en la ejecución del bot"
+          echo "📅 Fecha: $(date)"
+          echo "🔍 Revisa los logs para más detalles"
+          echo "🔄 Próximo intento: en 6 horas"
+
+  # Job adicional para estadísticas (opcional)
+  stats:
+    name: 📈 Actualizar Estadísticas
+    runs-on: ubuntu-latest
+    needs: content-arbitrage
+    if: success()
+    
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: 📊 Generate Stats
+        run: |
+          # Crear archivo de estadísticas
+          echo "# 📊 Estadísticas del Bot" > STATS.md
+          echo "" >> STATS.md
+          echo "- **Última ejecución:** $(date)" >> STATS.md
+          echo "- **Estado:** ✅ Funcionando" >> STATS.md
+          echo "- **Próxima ejecución:** $(date -d '+6 hours')" >> STATS.md
+          echo "" >> STATS.md
+          
+          # Contar ejecuciones
+          if [ -f logs/execution.log ]; then
+            EXEC_COUNT=$(wc -l < logs/execution.log)
+            echo "- **Total ejecuciones:** $EXEC_COUNT" >> STATS.md
+          fi
+          
+          echo "" >> STATS.md
+          echo "---" >> STATS.md
+          echo "*Actualizado automáticamente por GitHub Actions*" >> STATS.md
+
+      - name: 💾 Save Stats
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "Stats Bot"
+          git add STATS.md
+          
+          if [ -n "$(git status --porcelain)" ]; then
+            git commit -m "📊 Update stats: $(date '+%Y-%m-%d %H:%M')"
+            git push
+          fi
