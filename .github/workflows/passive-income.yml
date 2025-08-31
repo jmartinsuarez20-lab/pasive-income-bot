@@ -3,12 +3,13 @@
 # Se ejecuta cada 6 horas y crea productos automáticamente
 
 name: 🤖 Passive Income Bot
+
 on:
   # Se ejecuta cada 6 horas automáticamente
   schedule:
-    - cron: '0 */6 * * *'  # A las 00:00, 06:00, 12:00, 18:00 UTC
+    - cron: '0 */6 * * *'  # 00:00, 06:00, 12:00, 18:00 UTC
   
-  # También permite ejecutar manualmente
+  # También permite ejecución manual
   workflow_dispatch:
     inputs:
       test_mode:
@@ -20,7 +21,7 @@ jobs:
   content-arbitrage:
     name: 📊 Crear Productos Automáticos
     runs-on: ubuntu-latest
-    timeout-minutes: 15  # Límite de seguridad
+    timeout-minutes: 15
     
     steps:
       # 1. Descargar el código del repositorio
@@ -30,19 +31,19 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 0
 
-      # 2. Configurar Python
+      # 2. Configurar Python con caché
       - name: 🐍 Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           cache: 'pip'
+          cache-dependency-path: '**/requirements.txt'
 
-      # 3. Instalar dependencias
+      # 3. Instalar dependencias desde requirements.txt
       - name: 📦 Install Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install requests beautifulsoup4 openai==0.28.1 reportlab python-dotenv
-          pip install --no-deps PyPDF2
+          pip install -r requirements.txt
 
       # 4. Verificar APIs disponibles
       - name: 🔍 Check API Keys
@@ -69,30 +70,23 @@ jobs:
           TEST_MODE: ${{ github.event.inputs.test_mode }}
         run: |
           echo "🤖 Iniciando bot de ingresos pasivos..."
-          python main.py
+          python main.py | tee -a logs/execution.log
           echo "✅ Bot ejecutado correctamente"
 
       # 6. Guardar logs y resultados
       - name: 💾 Save Results
         run: |
-          # Crear directorio de logs si no existe
           mkdir -p logs
-          
-          # Guardar log de esta ejecución
           echo "$(date): Bot ejecutado correctamente" >> logs/execution.log
-          
-          # Mostrar últimas 10 ejecuciones
           echo "📊 Últimas ejecuciones:"
           tail -10 logs/execution.log || echo "Primer ejecución"
 
-      # 7. Commit automático de resultados (opcional)
+      # 7. Commit automático de resultados
       - name: 📝 Commit Results
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "Passive Income Bot"
           git add -A
-          
-          # Solo commit si hay cambios
           if [ -n "$(git status --porcelain)" ]; then
             git commit -m "🤖 Auto: Bot execution $(date '+%Y-%m-%d %H:%M')"
             git push
@@ -101,14 +95,13 @@ jobs:
             echo "📝 Sin cambios para guardar"
           fi
 
-      # 8. Notificación de éxito (opcional)
+      # 8. Notificación de éxito
       - name: 🎉 Success Notification
         if: success()
         run: |
           echo "🎉 ¡Bot ejecutado exitosamente!"
           echo "📅 Fecha: $(date)"
           echo "🔄 Próxima ejecución: en 6 horas"
-          echo "📊 Revisa Gumroad para nuevos productos"
 
       # 9. Manejo de errores
       - name: ❌ Error Notification
@@ -117,9 +110,8 @@ jobs:
           echo "❌ Error en la ejecución del bot"
           echo "📅 Fecha: $(date)"
           echo "🔍 Revisa los logs para más detalles"
-          echo "🔄 Próximo intento: en 6 horas"
 
-  # Job adicional para estadísticas (opcional)
+  # Job adicional para estadísticas
   stats:
     name: 📈 Actualizar Estadísticas
     runs-on: ubuntu-latest
@@ -135,31 +127,19 @@ jobs:
 
       - name: 📊 Generate Stats
         run: |
-          # Crear archivo de estadísticas
           echo "# 📊 Estadísticas del Bot" > STATS.md
           echo "" >> STATS.md
           echo "- **Última ejecución:** $(date)" >> STATS.md
           echo "- **Estado:** ✅ Funcionando" >> STATS.md
           echo "- **Próxima ejecución:** $(date -d '+6 hours')" >> STATS.md
-          echo "" >> STATS.md
-          
-          # Contar ejecuciones
           if [ -f logs/execution.log ]; then
-            EXEC_COUNT=$(wc -l < logs/execution.log)
+            -l < logs/execution.log)
             echo "- **Total ejecuciones:** $EXEC_COUNT" >> STATS.md
           fi
-          
           echo "" >> STATS.md
           echo "---" >> STATS.md
           echo "*Actualizado automáticamente por GitHub Actions*" >> STATS.md
 
       - name: 💾 Save Stats
         run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "Stats Bot"
-          git add STATS.md
-          
-          if [ -n "$(git status --porcelain)" ]; then
-            git commit -m "📊 Update stats: $(date '+%Y-%m-%d %H:%M')"
-            git push
-          fi
+          git config --local
