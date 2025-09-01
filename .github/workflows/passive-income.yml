@@ -38,12 +38,15 @@ jobs:
           fi
           echo "✅ OpenAI API configurada"
 
-      - name: 🚀 Create Products
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-        run: |
-          python simple_main.py
-
+       - name: 🚀 Create Products
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+    run: |
+      echo "Buscando el script en el directorio de trabajo..."
+      find $GITHUB_WORKSPACE -name "simple_main.py"
+      echo "Intentando ejecutar el script con la ruta completa..."
+      python $GITHUB_WORKSPACE/simple_main.py
+      
       - name: 📁 List Created Files
         run: |
           echo "📊 Archivos creados:"
