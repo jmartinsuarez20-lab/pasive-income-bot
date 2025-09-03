@@ -4,9 +4,16 @@ import json
 import openai
 import os
 from datetime import datetime
-from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.units import inch
 import random
+import re
+from dotenv import load_dotenv
+
+# Cargar variables de entorno desde .env para desarrollo local
+load_dotenv()
 
 # Configurar OpenAI
 openai.api_key = os.getenv('OPENAI_API_KEY')
@@ -28,23 +35,44 @@ def test_openai():
         return False
 
 def get_simple_content():
-    """Contenido básico para crear producto"""
-    print("📝 Generando contenido base...")
+    """Generar un tema de producto único usando IA."""
+    print("🧠 Generando nueva idea de producto con IA...")
     
-    topics = [
-        "10 secretos de emprendimiento que todo empresario debe conocer",
-        "Estrategias de productividad para profesionales exitosos", 
-        "Guía completa de marketing digital para principiantes",
-        "Técnicas de ventas que realmente funcionan",
-        "Como crear un negocio online desde cero"
-    ]
-    
-    selected_topic = random.choice(topics)
-    print(f"✅ Tema seleccionado: {selected_topic}")
-    return selected_topic
+    try:
+        prompt = """Genera un tema específico y atractivo para un ebook corto (infoproducto) que sea vendible en plataformas como Gumroad o Etsy.
+El tema debe ser de nicho pero con demanda. Por ejemplo: 'Guía de 30 días de ayuno intermitente para principiantes' o 'Cómo crear un podcast exitoso con un presupuesto de $100'.
+Devuelve SOLO el tema, sin comillas ni texto adicional.
+"""
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=60,
+            temperature=0.9,
+            n=1
+        )
+
+        topic = response.choices[0].message.content.strip()
+        # A veces la API devuelve el tema entre comillas, las quitamos.
+        topic = topic.strip('"')
+
+        print(f"✅ Nuevo tema generado: {topic}")
+        return topic
+
+    except Exception as e:
+        print(f"❌ Error generando tema con IA: {e}")
+        print(" fallback a tema de la lista clásica.")
+        # En caso de error, volvemos a la lista original como respaldo.
+        topics = [
+            "10 secretos de emprendimiento que todo empresario debe conocer",
+            "Estrategias de productividad para profesionales exitosos",
+            "Guía completa de marketing digital para principiantes",
+            "Técnicas de ventas que realmente funcionan",
+            "Como crear un negocio online desde cero"
+        ]
+        return random.choice(topics)
 
 def create_product_simple(topic):
-    """Crear producto con IA - versión simple"""
+    """Crear producto con IA - versión robusta"""
     print("🤖 Creando producto con IA...")
     
     prompt = f"""Crea un ebook corto sobre: "{topic}"
@@ -69,71 +97,61 @@ Solo el JSON, nada más."""
         
         content = response.choices[0].message.content.strip()
         
-        # Limpiar respuesta
-        if content.startswith('```json'):
-            content = content[7:]
-        if content.endswith('```'):
-            content = content[:-3]
+        # Extraer el JSON del texto usando una expresión regular para más robustez
+        json_match = re.search(r'\{.*\}', content, re.DOTALL)
         
-        product = json.loads(content)
-        print("✅ Producto creado por IA")
-        return product
+        if json_match:
+            json_string = json_match.group(0)
+            product = json.loads(json_string)
+            print("✅ Producto creado por IA")
+            return product
+        else:
+            # Si no se encuentra JSON, lanzar un error para que se maneje en el bloque except
+            raise ValueError("No se encontró un JSON válido en la respuesta de la IA.")
         
     except Exception as e:
         print(f"❌ Error IA: {e}")
+        print(" fallback a producto de emergencia.")
         return {
             "titulo": f"Guía Práctica: {topic[:40]}...",
             "precio": random.randint(15, 25),
-            "contenido": f"Esta es una guía completa sobre {topic}. Incluye estrategias probadas y consejos prácticos para obtener resultados reales.",
+            "contenido": f"Esta es una guía completa sobre {topic}. Incluye estrategias probadas y consejos prácticos para obtener resultados reales. Este es un contenido de respaldo debido a un error en la generación principal.",
             "descripcion": f"Guía práctica sobre {topic} con consejos de expertos y técnicas probadas."
         }
 
 def create_simple_pdf(product):
-    """Crear PDF básico pero funcional"""
-    print("📄 Creando PDF...")
+    """Crear PDF con formato mejorado usando Platypus"""
+    print("📄 Creando PDF con formato mejorado...")
     
     filename = f"producto_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
     
     try:
-        c = canvas.Canvas(filename, pagesize=letter)
-        width, height = letter
+        doc = SimpleDocTemplate(filename, pagesize=letter)
+        styles = getSampleStyleSheet()
+        story = []
+
+        # Estilo para el título
+        title_style = styles['h1']
         
-        # Título
-        c.setFont("Helvetica-Bold", 18)
-        c.drawString(50, height-100, product['titulo'][:80])
+        # Estilo para metadatos
+        meta_style = styles['BodyText']
         
-        # Fecha
-        c.setFont("Helvetica", 12)
-        c.drawString(50, height-130, f"Creado: {datetime.now().strftime('%d/%m/%Y')}")
-        c.drawString(50, height-150, f"Precio: €{product['precio']}")
+        # Añadir Título
+        story.append(Paragraph(product['titulo'], title_style))
+        story.append(Spacer(1, 0.2 * inch))
         
-        # Contenido
-        c.setFont("Helvetica", 10)
-        y_position = height - 200
+        # Añadir Metadatos
+        story.append(Paragraph(f"Creado: {datetime.now().strftime('%d/%m/%Y')}", meta_style))
+        story.append(Paragraph(f"Precio: €{product['precio']}", meta_style))
+        story.append(Spacer(1, 0.4 * inch))
         
-        # Dividir contenido en líneas
-        content = product['contenido']
-        words = content.split()
-        line = ""
+        # Añadir Contenido principal
+        # Reemplazar saltos de línea con <br/> para que Paragraph los interprete
+        content_html = product['contenido'].replace('\n', '<br/>')
+        story.append(Paragraph(content_html, styles['BodyText']))
         
-        for word in words[:500]:  # Máximo 500 palabras
-            if len(line + word) < 80:
-                line += word + " "
-            else:
-                if y_position < 50:
-                    c.showPage()
-                    y_position = height - 50
-                    c.setFont("Helvetica", 10)
-                
-                c.drawString(50, y_position, line.strip())
-                line = word + " "
-                y_position -= 15
+        doc.build(story)
         
-        # Última línea
-        if line:
-            c.drawString(50, y_position, line.strip())
-        
-        c.save()
         print(f"✅ PDF creado: {filename}")
         return filename
         
